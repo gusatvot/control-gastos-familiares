@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Gastos Familiares</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    
+    <!-- React -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS para exportar Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- jsPDF para exportar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        .toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 500;
+    z-index: 1000;
+    transform: translateX(400px);
+    transition: transform 0.3s ease;
+    max-width: 300px;
+}
+
+.toast.show {
+    transform: translateX(0);
+}
+
+.toast.success {
+    background: #10b981;
+    border-left: 4px solid #059669;
+}
+
+.toast.error {
+    background: #ef4444;
+    border-left: 4px solid #dc2626;
+}
+
+.toast.warning {
+    background: #f59e0b;
+    border-left: 4px solid #d97706;
+}
+
+.toast.info {
+    background: #3b82f6;
+    border-left: 4px solid #2563eb;
+}
+        .loading-spinner {
+            border: 2px solid #f3f4f6;
+            border-left: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // =============================================
+        // CONFIGURACIÓN SUPABASE - CON TUS CREDENCIALES
+        // =============================================
+        const SUPABASE_URL = 'https://hzellvrwvdpesnbvyqfz.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6ZWxsdnJ3dmRwZXNuYnZ5cWZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwOTMzMzcsImV4cCI6MjA3NDY2OTMzN30.JuM-pPwVAkadDnY7NPX8J6bZqkSdWZ7-6WL1tA6-1O0';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // =============================================
+// SISTEMA DE NOTIFICACIONES (TOAST)
+// =============================================
+function showToast(message, type = 'success') {
+    // Crear el elemento toast
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="flex items-center space-x-2">
+            <i data-lucide="${getToastIcon(type)}" class="w-4 h-4"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    // Agregar al DOM
+    document.body.appendChild(toast);
+    
+    // Mostrar con animación
+    setTimeout(() => toast.classList.add('show'), 100);
+    
+    // Ocultar después de 3 segundos
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+    
+    // Inicializar iconos Lucide para el toast
+    setTimeout(() => {
+        if (window.lucide && window.lucide.createIcons) {
+            window.lucide.createIcons();
+        }
+    }, 150);
+}
+
+function getToastIcon(type) {
+    const icons = {
+        success: 'check-circle',
+        error: 'x-circle',
+        warning: 'alert-triangle',
+        info: 'info'
+    };
+    return icons[type] || 'info';
+}
+
+        // =============================================
+        // COMPONENTE PRINCIPAL DE LA APLICACIÓN
+        // =============================================
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            const [activeModal, setActiveModal] = React.useState(null);
+            const [expenses, setExpenses] = React.useState([]);
+            const [incomes, setIncomes] = React.useState([]);
+            const [expenseCategories, setExpenseCategories] = React.useState([]);
+            const [incomeCategories, setIncomeCategories] = React.useState([]);
+            const [budgets, setBudgets] = React.useState([]);
+            const [summary, setSummary] = React.useState({
+                totalIncome: 0,
+                totalExpense: 0,
+                balance: 0
+            });
+            const [filters, setFilters] = React.useState({
+                startDate: '',
+                endDate: '',
+                category: ''
+            });
+
+            // Verificar sesión al cargar
+            React.useEffect(() => {
+                checkUser();
+                
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+                    setUser(session?.user || null);
+                    setLoading(false);
+                });
+
+                return () => subscription.unsubscribe();
+            }, []);
+
+            // Cargar datos cuando el usuario cambie
+            React.useEffect(() => {
+                if (user) {
+                    loadAllData();
+                }
+            }, [user]);
+
+            const checkUser = async () => {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    setUser(session?.user || null);
+                } catch (error) {
+                    console.error('Error checking user:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadAllData = async () => {
+                if (!user) return;
+                
+                try {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('family_code')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (!profile) return;
+
+                    // Cargar todos los datos en paralelo
+                    const [
+                        expensesResponse,
+                        incomesResponse,
+                        expenseCategoriesResponse,
+                        incomeCategoriesResponse,
+                        budgetsResponse
+                    ] = await Promise.all([
+                        supabase.from('expenses').select('*').eq('family_code', profile.family_code).order('date', { ascending: false }),
+                        supabase.from('incomes').select('*').eq('family_code', profile.family_code).order('date', { ascending: false }),
+                        supabase.from('expense_categories').select('*').eq('family_code', profile.family_code),
+                        supabase.from('income_categories').select('*').eq('family_code', profile.family_code),
+                        supabase.from('budgets').select('*').eq('family_code', profile.family_code)
+                    ]);
+
+                    setExpenses(expensesResponse.data || []);
+                    setIncomes(incomesResponse.data || []);
+                    setExpenseCategories(expenseCategoriesResponse.data || []);
+                    setIncomeCategories(incomeCategoriesResponse.data || []);
+                    setBudgets(budgetsResponse.data || []);
+                        // DIAGNÓSTICO: Ver qué se está cargando
+                    console.log('📊 DATOS CARGADOS:');
+                    console.log('Expense Categories Response:', expenseCategoriesResponse);
+                    console.log('Expense Categories Data:', expenseCategoriesResponse.data);
+                    console.log('Expense Categories en estado:', expenseCategoriesResponse.data || []);
+
+                    calculateSummary(expensesResponse.data || [], incomesResponse.data || []);
+
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                }
+            };
+
+            const calculateSummary = (expensesData, incomesData) => {
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+
+                const monthlyExpenses = expensesData.filter(expense => {
+                    const expenseDate = new Date(expense.date);
+                    return expenseDate.getMonth() === currentMonth && 
+                           expenseDate.getFullYear() === currentYear;
+                });
+
+                const monthlyIncomes = incomesData.filter(income => {
+                    const incomeDate = new Date(income.date);
+                    return incomeDate.getMonth() === currentMonth && 
+                           incomeDate.getFullYear() === currentYear;
+                });
+
+                const totalExpense = monthlyExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+                const totalIncome = monthlyIncomes.reduce((sum, income) => sum + parseFloat(income.amount), 0);
+                const balance = totalIncome - totalExpense;
+
+                setSummary({
+                    totalIncome,
+                    totalExpense,
+                    balance
+                });
+            };
+
+            const getExpensesByCategory = () => {
+                const categories = {};
+                
+                expenses.forEach(expense => {
+                    if (!categories[expense.category]) {
+                        categories[expense.category] = 0;
+                    }
+                    categories[expense.category] += parseFloat(expense.amount);
+                });
+                
+                return Object.entries(categories).map(([category, amount]) => ({
+                    category,
+                    amount
+                })).sort((a, b) => b.amount - a.amount);
+            };
+
+            const refreshData = () => {
+                loadAllData();
+            };
+
+            const handleLogout = async () => {
+                try {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                } catch (error) {
+                    console.error('Error logging out:', error);
+                }
+            };
+
+            // Filtrar transacciones
+            const filteredExpenses = expenses.filter(expense => {
+                if (filters.startDate && new Date(expense.date) < new Date(filters.startDate)) return false;
+                if (filters.endDate && new Date(expense.date) > new Date(filters.endDate)) return false;
+                if (filters.category && expense.category !== filters.category) return false;
+                return true;
+            });
+
+            const filteredIncomes = incomes.filter(income => {
+                if (filters.startDate && new Date(income.date) < new Date(filters.startDate)) return false;
+                if (filters.endDate && new Date(income.date) > new Date(filters.endDate)) return false;
+                if (filters.category && income.category !== filters.category) return false;
+                return true;
+            });
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                        <div className="loading-spinner"></div>
+                        <span className="ml-2">Cargando...</span>
+                    </div>
+                );
+            }
+
+            if (!user) {
+                return <AuthScreen />;
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-900">
+                    {/* Header */}
+                    <header className="bg-gray-800 border-b border-gray-700 p-4">
+                        <div className="container mx-auto flex justify-between items-center">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <span className="font-bold">$</span>
+                                </div>
+                                <h1 className="text-xl font-semibold">Control de Gastos Familiares</h1>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                <span className="text-gray-300">{user.email}</span>
+                                <button
+                                    onClick={handleLogout}
+                                    className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                                >
+                                    <i data-lucide="log-out" className="w-4 h-4"></i>
+                                    <span>Salir</span>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Contenido Principal */}
+                    <main className="container mx-auto p-4">
+                        {/* Acciones Rápidas */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+                            <ActionButton 
+                                icon="plus" 
+                                label="Agregar Gasto" 
+                                color="red"
+                                onClick={() => setActiveModal('expense')}
+                            />
+                            <ActionButton 
+                                icon="trending-up" 
+                                label="Agregar Ingreso" 
+                                color="green"
+                                onClick={() => setActiveModal('income')}
+                            />
+                            <ActionButton 
+                                icon="file-text" 
+                                label="Ver Reportes" 
+                                color="blue"
+                                onClick={() => setActiveModal('reports')}
+                            />
+                            <ActionButton 
+                                icon="tag" 
+                                label="Categorías" 
+                                color="orange"
+                                onClick={() => setActiveModal('categories')}
+                            />
+                            <ActionButton 
+                                icon="target" 
+                                label="Presupuestos" 
+                                color="purple"
+                                onClick={() => setActiveModal('budgets')}
+                            />
+                            <ActionButton 
+                                icon="settings" 
+                                label="Configuración" 
+                                color="gray"
+                                onClick={() => setActiveModal('settings')}
+                            />
+                        </div>
+
+                        {/* Filtros */}
+                        <div className="bg-gray-800 rounded-lg p-4 mb-6">
+                            <h3 className="text-lg font-semibold mb-3">Filtros</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Fecha Inicio</label>
+                                    <input
+                                        type="date"
+                                        value={filters.startDate}
+                                        onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Fecha Fin</label>
+                                    <input
+                                        type="date"
+                                        value={filters.endDate}
+                                        onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Categoría</label>
+                                    <select
+                                    value={filters.category}
+                                    onChange={(e) => setFilters({...filters, category: e.target.value})}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                >
+                                    <option value="">Todas las categorías</option>
+                                    <option value="Alimentación">Alimentación</option>
+                                    <option value="Transporte">Transporte</option>
+                                    <option value="Vivienda">Vivienda</option>
+                                    <option value="Entretenimiento">Entretenimiento</option>
+                                    <option value="Salud">Salud</option>
+                                    <option value="Educación">Educación</option>
+                                    <option value="Otros">Otros</option>
+                                </select>
+                                </div>
+                                <div className="flex items-end">
+                                    <button
+                                        onClick={() => setFilters({startDate: '', endDate: '', category: ''})}
+                                        className="w-full bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                                    >
+                                        Limpiar Filtros
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tarjetas de Resumen */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <SummaryCard 
+                                title="Ingresos del Mes" 
+                                amount={summary.totalIncome} 
+                                color="green" 
+                                icon="trending-up"
+                            />
+                            <SummaryCard 
+                                title="Gastos del Mes" 
+                                amount={summary.totalExpense} 
+                                color="red" 
+                                icon="trending-down"
+                            />
+                            <SummaryCard 
+                                title="Presupuesto Disponible" 
+                                amount={summary.balance} 
+                                color="blue" 
+                                icon="dollar-sign"
+                            />
+                        </div>
+
+                        {/* Contenido Principal - Grid 2 columnas */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Historial de Gastos */}
+                            <div className="bg-gray-800 rounded-lg p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-lg font-semibold">Historial de Gastos</h2>
+                                    <span className="text-sm text-gray-400">
+                                        {filteredExpenses.length} registros
+                                    </span>
+                                </div>
+                                {filteredExpenses.length === 0 ? (
+                                    <div className="text-gray-400 text-center py-8">
+                                        <i data-lucide="file-text" className="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                                        <p>No hay gastos registrados</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3 max-h-80 overflow-y-auto">
+                                        {filteredExpenses.map((expense) => (
+                                            <TransactionItem 
+                                                key={expense.id}
+                                                transaction={expense}
+                                                type="expense"
+                                                onEdit={() => setActiveModal(`edit-expense-${expense.id}`)}
+                                                onDelete={() => setActiveModal(`delete-expense-${expense.id}`)}
+                                                refreshData={refreshData}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Gastos por Categoría */}
+                            <div className="bg-gray-800 rounded-lg p-6">
+                                <h2 className="text-lg font-semibold mb-4">Gastos por Categoría</h2>
+                                {expenses.length === 0 ? (
+                                    <div className="text-gray-400 text-center py-8">
+                                        <i data-lucide="pie-chart" className="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                                        <p>No hay datos para mostrar</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {getExpensesByCategory().map((item, index) => {
+                                            const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+                                            const percentage = ((item.amount / totalExpenses) * 100).toFixed(1);
+                                            const budget = budgets.find(b => b.category === item.category);
+                                            const budgetPercentage = budget ? ((item.amount / budget.amount) * 100).toFixed(1) : null;
+                                            
+                                            return (
+                                                <div key={index} className="space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="font-medium">{item.category}</span>
+                                                        <div className="text-right">
+                                                            <span className="text-red-400 font-semibold block">
+                                                                ${item.amount.toLocaleString()} ({percentage}%)
+                                                            </span>
+                                                            {budget && (
+                                                                <span className={`text-xs ${budgetPercentage > 100 ? 'text-red-500' : 'text-green-500'}`}>
+                                                                    Presupuesto: {budgetPercentage}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-gray-700 rounded-full h-2">
+                                                        <div 
+                                                            className="bg-red-500 h-2 rounded-full transition-all duration-300"
+                                                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Historial de Ingresos */}
+                        <div className="mt-6 bg-gray-800 rounded-lg p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-lg font-semibold">Historial de Ingresos</h2>
+                                <span className="text-sm text-gray-400">
+                                    {filteredIncomes.length} registros
+                                </span>
+                            </div>
+                            {filteredIncomes.length === 0 ? (
+                                <div className="text-gray-400 text-center py-4">
+                                    <i data-lucide="dollar-sign" className="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                    <p>No hay ingresos registrados</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3 max-h-80 overflow-y-auto">
+                                    {filteredIncomes.map((income) => (
+                                        <TransactionItem 
+                                            key={income.id}
+                                            transaction={income}
+                                            type="income"
+                                            onEdit={() => setActiveModal(`edit-income-${income.id}`)}
+                                            onDelete={() => setActiveModal(`delete-income-${income.id}`)}
+                                            refreshData={refreshData}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* Modales */}
+                    {activeModal === 'expense' && (
+                        <ExpenseModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            categories={expenseCategories}
+                        />
+                    )}
+                    {activeModal === 'income' && (
+                        <IncomeModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            categories={incomeCategories}
+                        />
+                    )}
+                    {activeModal === 'reports' && (
+                        <ReportsModal 
+                            onClose={() => setActiveModal(null)}
+                            expenses={expenses}
+                            incomes={incomes}
+                            expenseCategories={expenseCategories}
+                        />
+                    )}
+                    {activeModal === 'categories' && (
+                        <CategoriesModal 
+                            onClose={() => setActiveModal(null)}
+                            refreshData={refreshData}
+                            expenseCategories={expenseCategories}
+                            incomeCategories={incomeCategories}
+                        />
+                    )}
+                    {activeModal === 'budgets' && (
+                        <BudgetsModal 
+                            onClose={() => setActiveModal(null)}
+                            refreshData={refreshData}
+                            budgets={budgets}
+                            expenseCategories={expenseCategories}
+                        />
+                    )}
+                    
+                    {/* Modales de edición/eliminación dinámicos */}
+                    {activeModal?.startsWith('edit-expense-') && (
+                        <ExpenseModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            categories={expenseCategories}
+                            transactionId={activeModal.replace('edit-expense-', '')}
+                            expenses={expenses}
+                        />
+                    )}
+                    {activeModal?.startsWith('edit-income-') && (
+                        <IncomeModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            categories={incomeCategories}
+                            transactionId={activeModal.replace('edit-income-', '')}
+                            incomes={incomes}
+                        />
+                    )}
+                    {activeModal?.startsWith('delete-expense-') && (
+                        <DeleteModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            transactionId={activeModal.replace('delete-expense-', '')}
+                            type="expense"
+                        />
+                    )}
+                    {activeModal?.startsWith('delete-income-') && (
+                        <DeleteModal 
+                            onClose={() => setActiveModal(null)} 
+                            refreshData={refreshData}
+                            transactionId={activeModal.replace('delete-income-', '')}
+                            type="income"
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // =============================================
+        // COMPONENTE DE AUTENTICACIÓN
+        // =============================================
+        function AuthScreen() {
+            const [isLogin, setIsLogin] = React.useState(true);
+            const [email, setEmail] = React.useState('');
+            const [password, setPassword] = React.useState('');
+            const [fullName, setFullName] = React.useState('');
+            const [familyCode, setFamilyCode] = React.useState('');
+            const [showPassword, setShowPassword] = React.useState(false);
+            const [loading, setLoading] = React.useState(false);
+            const [error, setError] = React.useState('');
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+
+                try {
+                    if (isLogin) {
+                        const { error } = await supabase.auth.signInWithPassword({
+                            email,
+                            password,
+                        });
+                        if (error) throw error;
+                    } else {
+                        const { data: authData, error: authError } = await supabase.auth.signUp({
+                            email,
+                            password,
+                        });
+                        if (authError) throw authError;
+
+                        if (authData.user) {
+                            const finalFamilyCode = familyCode || generateFamilyCode();
+                            
+                            const { data: profileData, error: profileError } = await supabase
+                                .from('profiles')
+                                .insert([
+                                    {
+                                        id: authData.user.id,
+                                        email: email,
+                                        full_name: fullName,
+                                        family_code: finalFamilyCode,
+                                    },
+                                ])
+                                .select();
+
+                            if (profileError) throw profileError;
+                            
+                            // Crear categorías por defecto para la nueva familia
+                            await createDefaultCategories(finalFamilyCode);
+                            
+                            alert('¡Cuenta creada exitosamente! Por favor verifica tu email.');
+                        }
+                    }
+                } catch (error) {
+                    setError(error.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const generateFamilyCode = () => {
+                return Math.random().toString(36).substring(2, 10).toUpperCase();
+            };
+
+            const createDefaultCategories = async (familyCode) => {
+                const defaultExpenseCategories = [
+                    'Alimentación', 'Transporte', 'Vivienda', 'Entretenimiento', 
+                    'Salud', 'Educación', 'Ropa', 'Otros'
+                ];
+                
+                const defaultIncomeCategories = [
+                    'Salario', 'Freelance', 'Inversiones', 'Ventas', 
+                    'Bonos', 'Regalos', 'Otros Ingresos'
+                ];
+
+                for (const category of defaultExpenseCategories) {
+                    await supabase.from('expense_categories').insert([
+                        { name: category, family_code: familyCode }
+                    ]);
+                }
+
+                for (const category of defaultIncomeCategories) {
+                    await supabase.from('income_categories').insert([
+                        { name: category, family_code: familyCode }
+                    ]);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+                    <div className="bg-gray-800 rounded-lg p-8 w-full max-w-md">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-2xl font-bold">$</span>
+                            </div>
+                            <h1 className="text-2xl font-bold">Control de Gastos Familiares</h1>
+                            <p className="text-gray-400 mt-2">
+                                {isLogin ? 'Inicia sesión en tu cuenta' : 'Crea tu cuenta familiar'}
+                            </p>
+                        </div>
+
+                        {error && (
+                            <div className="bg-red-600/20 border border-red-600 text-red-400 px-4 py-3 rounded-lg mb-4">
+                                {error}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            {!isLogin && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nombre Completo
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={fullName}
+                                        onChange={(e) => setFullName(e.target.value)}
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                        required={!isLogin}
+                                    />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    Email
+                                </label>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    Contraseña
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none pr-12"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                                    >
+                                        <i data-lucide={showPassword ? "eye-off" : "eye"} className="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {!isLogin && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Código Familiar (opcional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={familyCode}
+                                        onChange={(e) => setFamilyCode(e.target.value.toUpperCase())}
+                                        placeholder="Dejar vacío para crear nuevo"
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                    />
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Si tienes un código familiar, ingrésalo. Sino, crearemos uno nuevo.
+                                    </p>
+                                </div>
+                            )}
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="loading-spinner mr-2"></div>
+                                        Procesando...
+                                    </>
+                                ) : (
+                                    isLogin ? 'Iniciar Sesión' : 'Registrarse'
+                                )}
+                            </button>
+                        </form>
+
+                        <div className="mt-6 text-center">
+                            <button
+                                onClick={() => {
+                                    setIsLogin(!isLogin);
+                                    setError('');
+                                }}
+                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                                {isLogin 
+                                    ? '¿No tienes cuenta? Regístrate aquí' 
+                                    : '¿Ya tienes cuenta? Inicia sesión aquí'
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // =============================================
+        // COMPONENTES REUTILIZABLES
+        // =============================================
+        function ActionButton({ icon, label, color, onClick }) {
+            const colorClasses = {
+                red: 'bg-red-600 hover:bg-red-700',
+                green: 'bg-green-600 hover:bg-green-700',
+                blue: 'bg-blue-600 hover:bg-blue-700',
+                orange: 'bg-orange-600 hover:bg-orange-700',
+                purple: 'bg-purple-600 hover:bg-purple-700',
+                gray: 'bg-gray-700 hover:bg-gray-600'
+            };
+
+            return (
+                <button
+                    onClick={onClick}
+                    className={`${colorClasses[color]} p-4 rounded-lg transition-colors flex flex-col items-center justify-center space-y-2 min-h-[100px]`}
+                >
+                    <i data-lucide={icon} className="w-6 h-6"></i>
+                    <span className="text-sm font-medium">{label}</span>
+                </button>
+            );
+        }
+
+        function SummaryCard({ title, amount, color, icon }) {
+            const colorClasses = {
+                green: 'text-green-400',
+                red: 'text-red-400',
+                blue: 'text-blue-400'
+            };
+
+            return (
+                <div className="bg-gray-800 rounded-lg p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-gray-400 text-sm">{title}</p>
+                            <p className={`text-2xl font-semibold ${colorClasses[color]}`}>
+                                ${amount.toLocaleString()}
+                            </p>
+                        </div>
+                        <i data-lucide={icon} className="w-8 h-8 text-gray-400"></i>
+                    </div>
+                </div>
+            );
+        }
+
+        function TransactionItem({ transaction, type, onEdit, onDelete, refreshData }) {
+    return (
+        <div className="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
+            <div className="flex-1">
+                <p className="font-medium">{transaction.description}</p>
+                <p className="text-sm text-gray-400">
+                    {transaction.category} • {new Date(transaction.date).toLocaleDateString()}
+                </p>
+            </div>
+            <div className="flex items-center space-x-2">
+                <p className={`font-semibold ${type === 'expense' ? 'text-red-400' : 'text-green-400'}`}>
+                    {type === 'expense' ? '-' : '+'}${parseFloat(transaction.amount).toLocaleString()}
+                </p>
+                {/* BOTONES CON TEXTO EN LUGAR DE ICONOS */}
+                <div className="flex space-x-2">
+                    <button
+                        onClick={onEdit}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                        title="Editar"
+                    >
+                        Editar
+                    </button>
+                    <button
+                        onClick={onDelete}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+                        title="Eliminar"
+                    >
+                        Eliminar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+        // =============================================
+        // COMPONENTE MODAL CORREGIDO
+        // =============================================
+        function Modal({ title, children, onClose, wide = false }) {
+            const modalRef = React.useRef(null);
+
+            const handleBackdropClick = (e) => {
+                // Cerrar solo si se hace click en el backdrop (fondo oscuro)
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            };
+
+            // Cerrar con tecla Escape
+            React.useEffect(() => {
+                const handleEscape = (e) => {
+                    if (e.key === 'Escape') {
+                        onClose();
+                    }
+                };
+
+                document.addEventListener('keydown', handleEscape);
+                return () => document.removeEventListener('keydown', handleEscape);
+            }, [onClose]);
+
+            return (
+                <div 
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+                    onClick={handleBackdropClick}
+                >
+                    <div 
+                        ref={modalRef}
+                        className={`bg-gray-800 rounded-lg w-full ${wide ? 'max-w-4xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto`}
+                        onClick={(e) => e.stopPropagation()} // Prevenir que el click se propague al backdrop
+                    >
+                        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+                            <h3 className="text-lg font-semibold">{title}</h3>
+                            <button
+                                onClick={onClose}
+                                className="text-gray-400 hover:text-white transition-colors p-1 rounded"
+                                aria-label="Cerrar modal"
+                            >
+                                <i data-lucide="x" className="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            {children}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // =============================================
+        // COMPONENTES DE MODALES CORREGIDOS
+        // =============================================
+        function ExpenseModal({ onClose, refreshData, categories, transactionId, expenses }) {
+    const [amount, setAmount] = React.useState('');
+    const [description, setDescription] = React.useState('');
+    const [category, setCategory] = React.useState('');
+    const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]);
+    const [loading, setLoading] = React.useState(false);
+    const [isEditing, setIsEditing] = React.useState(false);
+
+    // Categorías de respaldo por si las de Supabase están vacías
+    const defaultCategories = [
+        'Alimentación', 'Transporte', 'Vivienda', 'Entretenimiento', 
+        'Salud', 'Educación', 'Ropa', 'Otros'
+    ];
+
+    // Usar categorías de Supabase o las de respaldo
+    const availableCategories = categories && categories.length > 0 
+        ? categories.map(cat => cat.name) 
+        : defaultCategories;
+
+    // Cargar datos cuando el componente se monta - SOLO UNA VEZ
+React.useEffect(() => {
+    console.log('Modal cargado - Transaction ID:', transactionId);
+    console.log('Categorías disponibles:', availableCategories);
+    
+    // Si estamos editando, cargar los datos del gasto
+    if (transactionId && expenses && expenses.length > 0) {
+        const expense = expenses.find(e => e.id == transactionId);
+        if (expense) {
+            console.log('Datos del gasto a editar:', expense);
+            
+            // Convertir el amount a string
+            const amountValue = expense.amount.toString();
+            setAmount(amountValue);
+            
+            setDescription(expense.description);
+            setCategory(expense.category);
+            setDate(expense.date);
+            setIsEditing(true);
+        }
+    } else {
+        // Si es nuevo gasto, establecer primera categoría por defecto
+        if (availableCategories.length > 0 && !category) {
+            setCategory(availableCategories[0]);
+        }
+    }
+}, []); // <-- Array de dependencias VACÍO para que solo se ejecute una vez
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        
+        if (!amount || !description || !category || !date) {
+            alert('Por favor completa todos los campos');
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No hay usuario autenticado');
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('family_code')
+                .eq('id', user.id)
+                .single();
+
+            if (!profile) throw new Error('No se pudo obtener el perfil del usuario');
+
+            if (isEditing) {
+                // Editar gasto existente
+                const { error } = await supabase
+                    .from('expenses')
+                    .update({
+                        amount: parseFloat(amount),
+                        description: description,
+                        category: category,
+                        date: date,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', transactionId);
+
+                if (error) throw error;
+                showToast('Gasto actualizado exitosamente!', 'success');
+            } else {
+                // Crear nuevo gasto
+                const { error } = await supabase
+                    .from('expenses')
+                    .insert([
+                        {
+                            amount: parseFloat(amount),
+                            description: description,
+                            category: category,
+                            date: date,
+                            family_code: profile.family_code,
+                            created_by: user.id,
+                        },
+                    ]);
+
+                if (error) throw error;
+                showToast('Gasto agregado exitosamente!', 'success');
+            }
+
+            onClose();
+            refreshData();
+            
+        } catch (error) {
+            console.error('Error saving expense:', error);
+            showToast('Error: ' + error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Modal title={isEditing ? "Editar Gasto" : "Agregar Gasto"} onClose={onClose}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Cantidad *
+                    </label>
+                    <input
+    type="number"
+    step="0.01"
+    value={amount}
+    onChange={(e) => setAmount(e.target.value)}
+    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+    placeholder="0.00"
+    required
+/>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Descripción *
+                    </label>
+                    <input
+                        type="text"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                        placeholder="Ej: Supermercado, Gasolina, etc."
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Categoría *
+                    </label>
+                    <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                        required
+                    >
+                        <option value="">Seleccionar categoría</option>
+                        {availableCategories.map((cat, index) => (
+                            <option key={index} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                    {!categories || categories.length === 0 ? (
+                        <p className="text-yellow-400 text-xs mt-1">
+                            Usando categorías temporales. Ve a "Categorías" para gestionar las categorías de tu familia.
+                        </p>
+                    ) : null}
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Fecha *
+                    </label>
+                    <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                        required
+                    />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={loading || !category}
+                        className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+                    >
+                        {loading ? (
+                            <>
+                                <div className="loading-spinner mr-2"></div>
+                                {isEditing ? 'Actualizando...' : 'Guardando...'}
+                            </>
+                        ) : (
+                            isEditing ? 'Actualizar Gasto' : 'Agregar Gasto'
+                        )}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+}
+
+        function IncomeModal({ onClose, refreshData, categories, transactionId, incomes }) {
+            const [amount, setAmount] = React.useState('');
+            const [description, setDescription] = React.useState('');
+            const [category, setCategory] = React.useState(categories[0]?.name || '');
+            const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]);
+            const [loading, setLoading] = React.useState(false);
+            const [isEditing, setIsEditing] = React.useState(false);
+
+            // Categorías de respaldo para ingresos
+const defaultIncomeCategories = [
+    'Salario', 'Freelance', 'Inversiones', 'Ventas', 
+    'Bonos', 'Regalos', 'Otros Ingresos'
+];
+
+// Usar categorías de Supabase o las de respaldo
+const availableCategories = categories && categories.length > 0 
+    ? categories.map(cat => cat.name) 
+    : defaultIncomeCategories;
+
+// Cargar datos cuando el componente se monta - SOLO UNA VEZ
+React.useEffect(() => {
+    console.log('Modal de ingreso cargado - Transaction ID:', transactionId);
+    console.log('Categorías de ingresos disponibles:', availableCategories);
+    
+    // Si estamos editando, cargar los datos del ingreso
+    if (transactionId && incomes && incomes.length > 0) {
+        const income = incomes.find(i => i.id == transactionId);
+        if (income) {
+            console.log('Datos del ingreso a editar:', income);
+            
+            // Convertir el amount a string
+            const amountValue = income.amount.toString();
+            setAmount(amountValue);
+            
+            setDescription(income.description);
+            setCategory(income.category);
+            setDate(income.date);
+            setIsEditing(true);
+        }
+    } else {
+        // Si es nuevo ingreso, establecer primera categoría por defecto
+        if (availableCategories.length > 0 && !category) {
+            setCategory(availableCategories[0]);
+        }
+    }
+}, []); // <-- Array de dependencias VACÍO para que solo se ejecute una vez
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!amount || !description || !category || !date) {
+                    alert('Por favor completa todos los campos');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error('No hay usuario autenticado');
+
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('family_code')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (!profile) throw new Error('No se pudo obtener el perfil del usuario');
+
+                    if (isEditing) {
+                        // Editar ingreso existente
+                        const { error } = await supabase
+                            .from('incomes')
+                            .update({
+                                amount: parseFloat(amount),
+                                description: description,
+                                category: category,
+                                date: date,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', transactionId);
+
+                        if (error) throw error;
+                        showToast('Ingreso actualizado exitosamente!', 'success');
+                    } else {
+                        // Crear nuevo ingreso
+                        const { error } = await supabase
+                            .from('incomes')
+                            .insert([
+                                {
+                                    amount: parseFloat(amount),
+                                    description: description,
+                                    category: category,
+                                    date: date,
+                                    family_code: profile.family_code,
+                                    created_by: user.id,
+                                },
+                            ]);
+
+                        if (error) throw error;
+                        showToast('Ingreso agregado exitosamente!', 'success');
+                    }
+
+                    onClose();
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error saving income:', error);
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <Modal title={isEditing ? "Editar Ingreso" : "Agregar Ingreso"} onClose={onClose}>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Cantidad *
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                placeholder="0.00"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Descripción *
+                            </label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                placeholder="Ej: Salario mensual, Venta, etc."
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Categoría *
+                            </label>
+                            <select
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                            required
+                        >
+                            <option value="">Seleccionar categoría</option>
+                            {availableCategories.map((cat, index) => (
+                                <option key={index} value={cat}>{cat}</option>
+                            ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Fecha *
+                            </label>
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none"
+                                required
+                            />
+                        </div>
+
+                        <div className="flex space-x-3 pt-4">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="loading-spinner mr-2"></div>
+                                        {isEditing ? 'Actualizando...' : 'Guardando...'}
+                                    </>
+                                ) : (
+                                    isEditing ? 'Actualizar Ingreso' : 'Agregar Ingreso'
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            );
+        }
+
+        function DeleteModal({ onClose, refreshData, transactionId, type }) {
+            const [loading, setLoading] = React.useState(false);
+
+            const handleDelete = async () => {
+                setLoading(true);
+
+                try {
+                    const table = type === 'expense' ? 'expenses' : 'incomes';
+                    const { error } = await supabase
+                        .from(table)
+                        .delete()
+                        .eq('id', transactionId);
+
+                    if (error) throw error;
+
+                    showToast(`${type === 'expense' ? 'Gasto' : 'Ingreso'} eliminado exitosamente!`, 'success');
+                    onClose();
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error deleting transaction:', error);
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <Modal title="Confirmar Eliminación" onClose={onClose}>
+                    <div className="space-y-4">
+                        <p className="text-gray-300">
+                            ¿Estás seguro de que quieres eliminar este {type === 'expense' ? 'gasto' : 'ingreso'}? 
+                            Esta acción no se puede deshacer.
+                        </p>
+                        
+                        <div className="flex space-x-3 pt-4">
+                            <button
+                                onClick={onClose}
+                                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={loading}
+                                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="loading-spinner mr-2"></div>
+                                        Eliminando...
+                                    </>
+                                ) : (
+                                    'Eliminar'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            );
+        }
+
+        function CategoriesModal({ onClose, refreshData, expenseCategories, incomeCategories }) {
+            const [newCategoryName, setNewCategoryName] = React.useState('');
+            const [categoryType, setCategoryType] = React.useState('expense');
+            const [loading, setLoading] = React.useState(false);
+
+            const handleAddCategory = async (e) => {
+                e.preventDefault();
+                
+                if (!newCategoryName.trim()) {
+                    alert('Por favor ingresa un nombre para la categoría');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error('No hay usuario autenticado');
+
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('family_code')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (!profile) throw new Error('No se pudo obtener el perfil del usuario');
+
+                    const table = categoryType === 'expense' ? 'expense_categories' : 'income_categories';
+                    
+                    const { error } = await supabase
+                        .from(table)
+                        .insert([
+                            {
+                                name: newCategoryName.trim(),
+                                family_code: profile.family_code,
+                            },
+                        ]);
+
+                    if (error) throw error;
+
+                    showToast('Categoría agregada exitosamente!', 'success');
+                    setNewCategoryName('');
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error adding category:', error);
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleDeleteCategory = async (categoryId, categoryName, type) => {
+                if (!confirm(`¿Estás seguro de que quieres eliminar la categoría "${categoryName}"?`)) {
+                    return;
+                }
+
+                try {
+                    const table = type === 'expense' ? 'expense_categories' : 'income_categories';
+                    const { error } = await supabase
+                        .from(table)
+                        .delete()
+                        .eq('id', categoryId);
+
+                    if (error) throw error;
+
+                    showToast('Categoría eliminada exitosamente!', 'success');
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error deleting category:', error);
+                    showToast('Error: ' + error.message, 'error');
+                }
+            };
+
+            return (
+                <Modal title="Gestión de Categorías" onClose={onClose}>
+                    <div className="space-y-6">
+                        {/* Formulario para agregar categoría */}
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3">Agregar Nueva Categoría</h3>
+                            <form onSubmit={handleAddCategory} className="space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                                            Tipo de Categoría
+                                        </label>
+                                        <select
+                                            value={categoryType}
+                                            onChange={(e) => setCategoryType(e.target.value)}
+                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                        >
+                                            <option value="expense">Gasto</option>
+                                            <option value="income">Ingreso</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                                            Nombre de la Categoría
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newCategoryName}
+                                            onChange={(e) => setNewCategoryName(e.target.value)}
+                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                            placeholder="Nombre de la categoría"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <div className="loading-spinner mr-2"></div>
+                                            Agregando...
+                                        </>
+                                    ) : (
+                                        'Agregar Categoría'
+                                    )}
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Lista de categorías existentes */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Categorías de Gastos */}
+                            <div>
+                                <h4 className="font-semibold mb-3 text-red-400">Categorías de Gastos</h4>
+                                <div className="space-y-2">
+                                    {expenseCategories.map((category) => (
+                                        <div key={category.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
+                                            <span>{category.name}</span>
+                                            <button
+                                                onClick={() => handleDeleteCategory(category.id, category.name, 'expense')}
+                                                className="text-red-400 hover:text-red-300 transition-colors"
+                                                title="Eliminar categoría"
+                                            >
+                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Categorías de Ingresos */}
+                            <div>
+                                <h4 className="font-semibold mb-3 text-green-400">Categorías de Ingresos</h4>
+                                <div className="space-y-2">
+                                    {incomeCategories.map((category) => (
+                                        <div key={category.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
+                                            <span>{category.name}</span>
+                                            <button
+                                                onClick={() => handleDeleteCategory(category.id, category.name, 'income')}
+                                                className="text-red-400 hover:text-red-300 transition-colors"
+                                                title="Eliminar categoría"
+                                            >
+                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+            );
+        }
+
+        function BudgetsModal({ onClose, refreshData, budgets, expenseCategories }) {
+            const [selectedCategory, setSelectedCategory] = React.useState('');
+            const [amount, setAmount] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!selectedCategory || !amount) {
+                    alert('Por favor completa todos los campos');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error('No hay usuario autenticado');
+
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('family_code')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (!profile) throw new Error('No se pudo obtener el perfil del usuario');
+
+                    // Verificar si ya existe un presupuesto para esta categoría
+                    const existingBudget = budgets.find(b => b.category === selectedCategory);
+
+                    if (existingBudget) {
+                        // Actualizar presupuesto existente
+                        const { error } = await supabase
+                            .from('budgets')
+                            .update({
+                                amount: parseFloat(amount),
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', existingBudget.id);
+
+                        if (error) throw error;
+                        alert('Presupuesto actualizado exitosamente!');
+                    } else {
+                        // Crear nuevo presupuesto
+                        const { error } = await supabase
+                            .from('budgets')
+                            .insert([
+                                {
+                                    category: selectedCategory,
+                                    amount: parseFloat(amount),
+                                    family_code: profile.family_code,
+                                    created_by: user.id,
+                                },
+                            ]);
+
+                        if (error) throw error;
+                        alert('Presupuesto creado exitosamente!');
+                    }
+
+                    setSelectedCategory('');
+                    setAmount('');
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error saving budget:', error);
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleDeleteBudget = async (budgetId, categoryName) => {
+                if (!confirm(`¿Estás seguro de que quieres eliminar el presupuesto para "${categoryName}"?`)) {
+                    return;
+                }
+
+                try {
+                    const { error } = await supabase
+                        .from('budgets')
+                        .delete()
+                        .eq('id', budgetId);
+
+                    if (error) throw error;
+
+                    alert('Presupuesto eliminado exitosamente!');
+                    refreshData();
+
+                } catch (error) {
+                    console.error('Error deleting budget:', error);
+                    showToast('Error: ' + error.message, 'error');
+                }
+            };
+
+            return (
+                <Modal title="Gestión de Presupuestos" onClose={onClose}>
+                    <div className="space-y-6">
+                        {/* Formulario para agregar/editar presupuesto */}
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3">
+                                {budgets.find(b => b.category === selectedCategory) ? 'Editar Presupuesto' : 'Crear Presupuesto'}
+                            </h3>
+                            <form onSubmit={handleSubmit} className="space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                                            Categoría
+                                        </label>
+                                        <select
+                                            value={selectedCategory}
+                                            onChange={(e) => {
+                                                setSelectedCategory(e.target.value);
+                                                const budget = budgets.find(b => b.category === e.target.value);
+                                                setAmount(budget ? budget.amount.toString() : '');
+                                            }}
+                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                            required
+                                        >
+                                            <option value="">Seleccionar categoría</option>
+                                            {expenseCategories.map((cat) => (
+                                                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                                            Monto del Presupuesto
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                            placeholder="0.00"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <div className="loading-spinner mr-2"></div>
+                                            Guardando...
+                                        </>
+                                    ) : (
+                                        budgets.find(b => b.category === selectedCategory) ? 'Actualizar Presupuesto' : 'Crear Presupuesto'
+                                    )}
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Lista de presupuestos existentes */}
+                        <div>
+                            <h4 className="font-semibold mb-3">Presupuestos Existentes</h4>
+                            <div className="space-y-2">
+                                {budgets.map((budget) => (
+                                    <div key={budget.id} className="flex items-center justify-between p-3 bg-gray-700 rounded">
+                                        <div>
+                                            <span className="font-medium">{budget.category}</span>
+                                            <p className="text-sm text-gray-400">${parseFloat(budget.amount).toLocaleString()}</p>
+                                        </div>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedCategory(budget.category);
+                                                    setAmount(budget.amount.toString());
+                                                }}
+                                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                                                title="Editar presupuesto"
+                                            >
+                                                <i data-lucide="edit-2" className="w-4 h-4"></i>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteBudget(budget.id, budget.category)}
+                                                className="text-red-400 hover:text-red-300 transition-colors"
+                                                title="Eliminar presupuesto"
+                                            >
+                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {budgets.length === 0 && (
+                                    <p className="text-gray-400 text-center py-4">No hay presupuestos configurados</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+            );
+        }
+
+        function ReportsModal({ onClose, expenses, incomes, expenseCategories }) {
+            const [reportType, setReportType] = React.useState('general');
+            const [dateRange, setDateRange] = React.useState('month');
+            const [chartInstance, setChartInstance] = React.useState(null);
+
+            const chartRef = React.useRef(null);
+
+            // Función para generar datos del reporte
+            const generateReportData = () => {
+                const now = new Date();
+                let startDate, endDate;
+
+                switch (dateRange) {
+                    case 'week':
+                        startDate = new Date(now.setDate(now.getDate() - 7));
+                        endDate = new Date();
+                        break;
+                    case 'month':
+                        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                        break;
+                    case 'year':
+                        startDate = new Date(now.getFullYear(), 0, 1);
+                        endDate = new Date(now.getFullYear(), 11, 31);
+                        break;
+                    default:
+                        startDate = new Date(0);
+                        endDate = new Date();
+                }
+
+                const filteredExpenses = expenses.filter(expense => 
+                    new Date(expense.date) >= startDate && new Date(expense.date) <= endDate
+                );
+                const filteredIncomes = incomes.filter(income => 
+                    new Date(income.date) >= startDate && new Date(income.date) <= endDate
+                );
+
+                return { filteredExpenses, filteredIncomes, startDate, endDate };
+            };
+
+            // Función para exportar a Excel
+            const exportToExcel = () => {
+                const { filteredExpenses, filteredIncomes } = generateReportData();
+                
+                const expenseData = filteredExpenses.map(expense => ({
+                    'Tipo': 'Gasto',
+                    'Descripción': expense.description,
+                    'Categoría': expense.category,
+                    'Monto': parseFloat(expense.amount),
+                    'Fecha': expense.date
+                }));
+
+                const incomeData = filteredIncomes.map(income => ({
+                    'Tipo': 'Ingreso',
+                    'Descripción': income.description,
+                    'Categoría': income.category,
+                    'Monto': parseFloat(income.amount),
+                    'Fecha': income.date
+                }));
+
+                const allData = [...expenseData, ...incomeData];
+                
+                const ws = XLSX.utils.json_to_sheet(allData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+                XLSX.writeFile(wb, `reporte-gastos-${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            // Función para exportar a PDF
+            const exportToPDF = () => {
+                const { filteredExpenses, filteredIncomes, startDate, endDate } = generateReportData();
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                doc.setFontSize(16);
+                doc.text('Reporte de Gastos Familiares', 20, 20);
+                doc.setFontSize(12);
+                doc.text(`Período: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`, 20, 30);
+
+                let yPosition = 50;
+
+                // Resumen
+                doc.setFontSize(14);
+                doc.text('Resumen', 20, yPosition);
+                yPosition += 10;
+
+                const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+                const totalIncomes = filteredIncomes.reduce((sum, income) => sum + parseFloat(income.amount), 0);
+                const balance = totalIncomes - totalExpenses;
+
+                doc.text(`Total Ingresos: $${totalIncomes.toLocaleString()}`, 20, yPosition);
+                yPosition += 10;
+                doc.text(`Total Gastos: $${totalExpenses.toLocaleString()}`, 20, yPosition);
+                yPosition += 10;
+                doc.text(`Balance: $${balance.toLocaleString()}`, 20, yPosition);
+                yPosition += 20;
+
+                // Gastos por categoría
+                if (filteredExpenses.length > 0) {
+                    doc.setFontSize(14);
+                    doc.text('Gastos por Categoría', 20, yPosition);
+                    yPosition += 10;
+
+                    const categories = {};
+                    filteredExpenses.forEach(expense => {
+                        categories[expense.category] = (categories[expense.category] || 0) + parseFloat(expense.amount);
+                    });
+
+                    Object.entries(categories).forEach(([category, amount]) => {
+                        if (yPosition > 270) {
+                            doc.addPage();
+                            yPosition = 20;
+                        }
+                        doc.text(`${category}: $${amount.toLocaleString()}`, 30, yPosition);
+                        yPosition += 10;
+                    });
+                }
+
+                doc.save(`reporte-gastos-${new Date().toISOString().split('T')[0]}.pdf`);
+            };
+
+            // Renderizar gráfico
+            React.useEffect(() => {
+                if (chartRef.current && reportType === 'general') {
+                    if (chartInstance) {
+                        chartInstance.destroy();
+                    }
+
+                    const { filteredExpenses } = generateReportData();
+                    
+                    const categories = {};
+                    filteredExpenses.forEach(expense => {
+                        categories[expense.category] = (categories[expense.category] || 0) + parseFloat(expense.amount);
+                    });
+
+                    const ctx = chartRef.current.getContext('2d');
+                    const newChartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: Object.keys(categories),
+                            datasets: [{
+                                data: Object.values(categories),
+                                backgroundColor: [
+                                    '#ef4444', '#f97316', '#f59e0b', '#eab308',
+                                    '#84cc16', '#22c55e', '#14b8a6', '#06b6d4',
+                                    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7'
+                                ],
+                                borderWidth: 2,
+                                borderColor: '#1f2937'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        color: '#d1d5db',
+                                        font: {
+                                            size: 12
+                                        }
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Distribución de Gastos por Categoría',
+                                    color: '#d1d5db',
+                                    font: {
+                                        size: 16
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    setChartInstance(newChartInstance);
+                }
+
+                return () => {
+                    if (chartInstance) {
+                        chartInstance.destroy();
+                    }
+                };
+            }, [reportType, dateRange, expenses]);
+
+            const { filteredExpenses, filteredIncomes, startDate, endDate } = generateReportData();
+            const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+            const totalIncomes = filteredIncomes.reduce((sum, income) => sum + parseFloat(income.amount), 0);
+            const balance = totalIncomes - totalExpenses;
+
+            return (
+                <Modal title="Reportes y Análisis" onClose={onClose} wide={true}>
+                    <div className="space-y-6">
+                        {/* Controles del reporte */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    Tipo de Reporte
+                                </label>
+                                <select
+                                    value={reportType}
+                                    onChange={(e) => setReportType(e.target.value)}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                >
+                                    <option value="general">Reporte General</option>
+                                    <option value="expenses">Solo Gastos</option>
+                                    <option value="incomes">Solo Ingresos</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    Período
+                                </label>
+                                <select
+                                    value={dateRange}
+                                    onChange={(e) => setDateRange(e.target.value)}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                                >
+                                    <option value="week">Última Semana</option>
+                                    <option value="month">Este Mes</option>
+                                    <option value="year">Este Año</option>
+                                    <option value="all">Todo el Período</option>
+                                </select>
+                            </div>
+                            <div className="flex space-x-2 items-end">
+                                <button
+                                    onClick={exportToExcel}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                                >
+                                    Exportar Excel
+                                </button>
+                                <button
+                                    onClick={exportToPDF}
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                                >
+                                    Exportar PDF
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Resumen */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-gray-800 rounded-lg p-4 text-center">
+                                <p className="text-gray-400 text-sm">Total Ingresos</p>
+                                <p className="text-2xl font-semibold text-green-400">
+                                    ${totalIncomes.toLocaleString()}
+                                </p>
+                            </div>
+                            <div className="bg-gray-800 rounded-lg p-4 text-center">
+                                <p className="text-gray-400 text-sm">Total Gastos</p>
+                                <p className="text-2xl font-semibold text-red-400">
+                                    ${totalExpenses.toLocaleString()}
+                                </p>
+                            </div>
+                            <div className="bg-gray-800 rounded-lg p-4 text-center">
+                                <p className="text-gray-400 text-sm">Balance</p>
+                                <p className={`text-2xl font-semibold ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    ${balance.toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Gráfico */}
+                        {reportType === 'general' && (
+                            <div className="bg-gray-800 rounded-lg p-4">
+                                <div className="h-80">
+                                    <canvas ref={chartRef}></canvas>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Estadísticas detalladas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Gastos por categoría */}
+                            <div className="bg-gray-800 rounded-lg p-4">
+                                <h4 className="font-semibold mb-3">Gastos por Categoría</h4>
+                                <div className="space-y-2">
+                                    {Object.entries(
+                                        filteredExpenses.reduce((acc, expense) => {
+                                            acc[expense.category] = (acc[expense.category] || 0) + parseFloat(expense.amount);
+                                            return acc;
+                                        }, {})
+                                    )
+                                    .sort(([,a], [,b]) => b - a)
+                                    .map(([category, amount]) => (
+                                        <div key={category} className="flex justify-between items-center">
+                                            <span>{category}</span>
+                                            <span className="text-red-400 font-semibold">
+                                                ${amount.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Ingresos por categoría */}
+                            <div className="bg-gray-800 rounded-lg p-4">
+                                <h4 className="font-semibold mb-3">Ingresos por Categoría</h4>
+                                <div className="space-y-2">
+                                    {Object.entries(
+                                        filteredIncomes.reduce((acc, income) => {
+                                            acc[income.category] = (acc[income.category] || 0) + parseFloat(income.amount);
+                                            return acc;
+                                        }, {})
+                                    )
+                                    .sort(([,a], [,b]) => b - a)
+                                    .map(([category, amount]) => (
+                                        <div key={category} className="flex justify-between items-center">
+                                            <span>{category}</span>
+                                            <span className="text-green-400 font-semibold">
+                                                ${amount.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Información del período */}
+                        <div className="text-center text-gray-400 text-sm">
+                            Reporte generado para el período: {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
+                        </div>
+                    </div>
+                </Modal>
+            );
+        }
+
+        // =============================================
+        // INICIALIZACIÓN DE LA APLICACIÓN
+        // =============================================
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Inicializar Lucide Icons después de renderizar
+        setTimeout(() => {
+            if (window.lucide && window.lucide.createIcons) {
+                window.lucide.createIcons();
+            }
+        }, 100);
+    </script>
+</body>
+</html>
