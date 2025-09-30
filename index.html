@@ -96,8 +96,9 @@
         // =============================================
         // CONFIGURACIÓN SUPABASE - CON TUS CREDENCIALES
         // =============================================
-        const SUPABASE_URL = 'https://hzellvrwvdpesnbvyqfz.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6ZWxsdnJ3dmRwZXNuYnZ5cWZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwOTMzMzcsImV4cCI6MjA3NDY2OTMzN30.JuM-pPwVAkadDnY7NPX8J6bZqkSdWZ7-6WL1tA6-1O0';
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ||'https://hzellvrwvdpesnbvyqfz.supabase.co';
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6ZWxsdnJ3dmRwZXNuYnZ5cWZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwOTMzMzcsImV4cCI6MjA3NDY2OTMzN30.JuM-pPwVAkadDnY7NPX8J6bZqkSdWZ7-6WL1tA6-1O0';
+
 
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -2187,4 +2188,5 @@ React.useEffect(() => {
         }, 100);
     </script>
 </body>
+
 </html>
