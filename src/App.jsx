@@ -258,7 +258,7 @@ function App() {
           />
           <ActionButton 
             icon="tag" 
-            label="CategorÃ­as" 
+            label="Categorías" 
             color="orange"
             onClick={() => setActiveModal('categories')}
           />
@@ -270,7 +270,7 @@ function App() {
           />
           <ActionButton 
             icon="settings" 
-            label="ConfiguraciÃ³n" 
+            label="Configuración" 
             color="gray"
             onClick={() => setActiveModal('settings')}
           />
@@ -299,21 +299,19 @@ function App() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">CategorÃ­a</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Categoría</label>
               <select
-                value={filters.category}
-                onChange={(e) => setFilters({...filters, category: e.target.value})}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">Todas las categorÃ­as</option>
-                <option value="AlimentaciÃ³n">AlimentaciÃ³n</option>
-                <option value="Transporte">Transporte</option>
-                <option value="Vivienda">Vivienda</option>
-                <option value="Entretenimiento">Entretenimiento</option>
-                <option value="Salud">Salud</option>
-                <option value="EducaciÃ³n">EducaciÃ³n</option>
-                <option value="Otros">Otros</option>
-              </select>
+        value={filters.category}
+        onChange={(e) => setFilters({...filters, category: e.target.value})}
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+      >
+        <option value="">Todas las categorías</option>
+        {expenseCategories.map((category) => (
+          <option key={category.id} value={category.name}>
+            {category.name}
+          </option>
+        ))}
+      </select>
             </div>
             <div className="flex items-end">
               <button
@@ -378,9 +376,9 @@ function App() {
             )}
           </div>
 
-          {/* Gastos por CategorÃ­a */}
+          {/* Gastos por Categoría */}
           <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Gastos por CategorÃ­a</h2>
+            <h2 className="text-lg font-semibold mb-4">Gastos por Categoría</h2>
             {expenses.length === 0 ? (
               <div className="text-gray-400 text-center py-8">
                 <p>No hay datos para mostrar</p>
@@ -537,3 +535,5 @@ function App() {
 }
 
 export default App
+
+
