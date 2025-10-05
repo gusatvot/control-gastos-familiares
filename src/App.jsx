@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import AuthScreen from './components/AuthScreen'
 import Modal from './components/Modal'
@@ -13,7 +13,7 @@ import SummaryCard from './components/SummaryCard'
 import TransactionItem from './components/TransactionItem'
 import BackupModal from './components/BackupModal'
 
-// Función de toast global
+// FunciÃ³n de toast global
 export function showToast(message, type = 'success') {
   const toast = document.createElement('div')
   toast.className = `toast ${type}`
@@ -57,7 +57,7 @@ function App() {
     category: ''
   })
 
-  // Verificar sesión al cargar
+  // Verificar sesiÃ³n al cargar
   useEffect(() => {
     checkUser()
     
@@ -236,7 +236,7 @@ function App() {
 
       {/* Contenido Principal */}
       <main className="container mx-auto p-4">
-        {/* Acciones Rápidas */}
+        {/* Acciones RÃ¡pidas */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <ActionButton 
             icon="plus" 
@@ -258,7 +258,7 @@ function App() {
           />
           <ActionButton 
             icon="tag" 
-            label="Categorías" 
+            label="CategorÃ­as" 
             color="orange"
             onClick={() => setActiveModal('categories')}
           />
@@ -270,7 +270,7 @@ function App() {
           />
           <ActionButton 
             icon="settings" 
-            label="Configuración" 
+            label="ConfiguraciÃ³n" 
             color="gray"
             onClick={() => setActiveModal('settings')}
           />
@@ -299,19 +299,19 @@ function App() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Categoría</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">CategorÃ­a</label>
               <select
                 value={filters.category}
                 onChange={(e) => setFilters({...filters, category: e.target.value})}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
               >
-                <option value="">Todas las categorías</option>
-                <option value="Alimentación">Alimentación</option>
+                <option value="">Todas las categorÃ­as</option>
+                <option value="AlimentaciÃ³n">AlimentaciÃ³n</option>
                 <option value="Transporte">Transporte</option>
                 <option value="Vivienda">Vivienda</option>
                 <option value="Entretenimiento">Entretenimiento</option>
                 <option value="Salud">Salud</option>
-                <option value="Educación">Educación</option>
+                <option value="EducaciÃ³n">EducaciÃ³n</option>
                 <option value="Otros">Otros</option>
               </select>
             </div>
@@ -378,9 +378,9 @@ function App() {
             )}
           </div>
 
-          {/* Gastos por Categoría */}
+          {/* Gastos por CategorÃ­a */}
           <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Gastos por Categoría</h2>
+            <h2 className="text-lg font-semibold mb-4">Gastos por CategorÃ­a</h2>
             {expenses.length === 0 ? (
               <div className="text-gray-400 text-center py-8">
                 <p>No hay datos para mostrar</p>
@@ -497,7 +497,7 @@ function App() {
         />
       )}
       
-      {/* Modales de edición/eliminación dinámicos */}
+      {/* Modales de ediciÃ³n/eliminaciÃ³n dinÃ¡micos */}
       {activeModal?.startsWith('edit-expense-') && (
         <ExpenseModal 
           onClose={() => setActiveModal(null)} 
